@@ -1,0 +1,17 @@
+{
+  "name": "grantwright",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Grant application draft generator for small nonprofits. Free Gemini previews, Claude-written full drafts for paying members.",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0"
+  },
+  "scripts": {
+    "test": "node test/run.mjs",
+    "dev": "netlify dev"
+  }
+}
