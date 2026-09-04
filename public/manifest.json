@@ -1,0 +1,21 @@
+{
+  "name": "Grantwright — Grant Application Drafts",
+  "short_name": "Grantwright",
+  "description": "Generate tailored, funder-matched grant application drafts for small nonprofits.",
+  "start_url": "/",
+  "scope": "/",
+  "id": "/",
+  "lang": "en-US",
+  "dir": "ltr",
+  "display": "standalone",
+  "display_override": ["standalone", "browser"],
+  "background_color": "#F4F1E8",
+  "theme_color": "#2F4538",
+  "orientation": "portrait",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

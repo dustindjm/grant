@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Admin — Grantwright</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{--forest:#2F4538;--stamp:#B23A2E;--bg:#F4F1E8;--surface:#FFF;--border:#E1DAC8;--text:#1C2321;--muted:#6B7268;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,sans-serif;line-height:1.5;}
+  .wrap{max-width:960px;margin:0 auto;padding:32px 20px 80px;}
+  h1{font-family:'Source Serif 4',serif;font-size:24px;color:var(--forest);margin:0 0 20px;}
+  h2{font-family:'Source Serif 4',serif;font-size:17px;color:var(--forest);margin:28px 0 10px;}
+  #loginScreen{max-width:340px;margin:80px auto;text-align:center;}
+  #loginScreen input{width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:8px;font-size:16px;margin-bottom:12px;}
+  #loginScreen button{width:100%;padding:12px;border:none;background:var(--forest);color:#fff;border-radius:8px;font-size:14.5px;font-weight:600;cursor:pointer;}
+  #loginError{color:var(--stamp);font-size:13px;margin-top:10px;display:none;}
+  #dashboard{display:none;}
+  .summary-row{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+  .summary-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 18px;flex:1;min-width:130px;}
+  .summary-card .num{font-family:'Source Serif 4',serif;font-size:24px;color:var(--forest);}
+  .summary-card .label{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);}
+  table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  th,td{text-align:left;padding:10px 13px;font-size:13px;border-bottom:1px solid var(--border);vertical-align:top;}
+  th{font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);background:var(--bg);}
+  tr:last-child td{border-bottom:none;}
+  tr.order-row{cursor:pointer;}
+  tr.order-row:hover{background:#FAF8F2;}
+  .pill{font-family:'IBM Plex Mono',monospace;font-size:10px;padding:3px 8px;border-radius:20px;white-space:nowrap;}
+  .pill.paid{background:#DCEBDD;color:var(--forest);}
+  .pill.pending{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+  .pill.err{background:#F7E4E0;color:var(--stamp);}
+  #detail{display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-top:20px;}
+  #detail h3{font-family:'Source Serif 4',serif;font-size:18px;margin:0 0 4px;}
+  #detail .meta{font-size:12.5px;color:var(--muted);margin-bottom:14px;}
+  #detail pre{white-space:pre-wrap;font-family:'Source Serif 4',serif;font-size:14px;line-height:1.65;background:var(--bg);padding:16px;border-radius:8px;}
+  .toolbar{display:flex;gap:8px;margin-bottom:16px;}
+  .toolbar button{font-family:'IBM Plex Mono',monospace;font-size:12px;background:var(--surface);border:1px solid var(--border);padding:8px 14px;border-radius:6px;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <h1>Grantwright Admin</h1>
+  <input type="password" id="pwInput" placeholder="Admin password" autocomplete="current-password">
+  <button id="loginBtn">Sign in</button>
+  <p id="loginError"></p>
+</div>
+
+<div class="wrap" id="dashboard">
+  <h1>Dashboard</h1>
+  <div class="toolbar">
+    <button id="refreshBtn">Refresh</button>
+    <button id="exportBtn">Export CSV</button>
+  </div>
+  <div class="summary-row" id="summaryRow"></div>
+
+  <h2>Drafts</h2>
+  <table>
+    <thead><tr><th>Org</th><th>Funder</th><th>Engine</th><th>Status</th><th>Created</th></tr></thead>
+    <tbody id="ordersBody"></tbody>
+  </table>
+
+  <h2>Members</h2>
+  <table>
+    <thead><tr><th>Email</th><th>Plan</th><th>Since</th></tr></thead>
+    <tbody id="membersBody"></tbody>
+  </table>
+
+  <div id="detail"></div>
+</div>
+
+<script>
+  let PASSWORD = '';
+  let DATA = { orders: [], members: [], stats: {} };
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  async function fetchData(pw) {
+    const res = await fetch('/api/admin-orders', { headers: { 'x-admin-password': pw } });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(body.error || 'Request failed.');
+    return body;
+  }
+
+  async function login() {
+    const pw = $('pwInput').value;
+    try {
+      DATA = await fetchData(pw);
+      PASSWORD = pw;
+      $('loginScreen').style.display = 'none';
+      $('dashboard').style.display = 'block';
+      render();
+    } catch (err) {
+      $('loginError').textContent = err.message;
+      $('loginError').style.display = 'block';
+    }
+  }
+
+  async function refresh() {
+    try {
+      DATA = await fetchData(PASSWORD);
+      render();
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+
+  function render() {
+    const s = DATA.stats || {};
+    $('summaryRow').innerHTML = `
+      <div class="summary-card"><div class="num">${s.totalDrafts ?? 0}</div><div class="label">Drafts</div></div>
+      <div class="summary-card"><div class="num">${s.paidDrafts ?? 0}</div><div class="label">Full drafts</div></div>
+      <div class="summary-card"><div class="num">${s.activeMembers ?? 0}</div><div class="label">Active members</div></div>
+      <div class="summary-card"><div class="num">${s.lifetimeMembers ?? 0}</div><div class="label">Lifetime</div></div>
+      <div class="summary-card"><div class="num">${esc(s.mrr ?? '$0')}</div><div class="label">Est. MRR</div></div>`;
+
+    $('ordersBody').innerHTML = '';
+    (DATA.orders || []).forEach((o) => {
+      const tr = document.createElement('tr');
+      tr.className = 'order-row';
+      tr.onclick = () => showDetail(o.id);
+      const status = o.upgradeError
+        ? '<span class="pill err">Upgrade failed</span>'
+        : `<span class="pill ${o.unlocked ? 'paid' : 'pending'}">${o.unlocked ? 'Full' : 'Preview'}</span>`;
+      tr.innerHTML = `<td>${esc(o.orgName)}<br><span style="color:#6B7268;font-size:11.5px;">${esc(o.orgEmail)}</span></td>
+        <td>${esc(o.funderName)}</td><td style="font-family:'IBM Plex Mono',monospace;font-size:11px;">${esc(o.engine || '')}</td>
+        <td>${status}</td><td>${new Date(o.createdAt).toLocaleString()}</td>`;
+      $('ordersBody').appendChild(tr);
+    });
+
+    $('membersBody').innerHTML = (DATA.members || [])
+      .map((m) => `<tr><td>${esc(m.email)}</td><td>${esc(m.plan)}</td><td>${new Date(m.activatedAt).toLocaleDateString()}</td></tr>`)
+      .join('') || '<tr><td colspan="3" style="color:#6B7268;">No paying members yet.</td></tr>';
+  }
+
+  function showDetail(id) {
+    const o = (DATA.orders || []).find((x) => x.id === id);
+    if (!o) return;
+    const detail = $('detail');
+    detail.style.display = 'block';
+    detail.innerHTML = `<h3>${esc(o.orgName)} — ${esc(o.funderName)}</h3>
+      <div class="meta">${esc(o.plan || '')} · ${o.unlocked ? 'Paid' : 'Preview only'} · ${esc(o.orgEmail || 'no email')} · Deadline: ${esc(o.deadline || 'not set')} · Engine: ${esc(o.engine || '')}</div>
+      ${o.upgradeError ? `<p style="color:#B23A2E;font-size:13px;">Upgrade error: ${esc(o.upgradeError)}</p>` : ''}
+      <pre>${esc(o.draft)}</pre>`;
+    detail.scrollIntoView({ behavior: 'smooth' });
+  }
+
+  function exportCsv() {
+    const rows = [['Org', 'Email', 'Funder', 'Plan', 'Engine', 'Status', 'Created']];
+    (DATA.orders || []).forEach((o) =>
+      rows.push([o.orgName, o.orgEmail, o.funderName, o.plan, o.engine, o.unlocked ? 'Full' : 'Preview', new Date(o.createdAt).toISOString()])
+    );
+    const csv = rows.map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(',')).join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'grantwright-orders.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  $('loginBtn').addEventListener('click', login);
+  $('refreshBtn').addEventListener('click', refresh);
+  $('exportBtn').addEventListener('click', exportCsv);
+  $('pwInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+</script>
+</body>
+</html>

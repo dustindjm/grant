@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Grant Application Draft Generator for Nonprofits | Grantwright</title>
+<meta name="description" content="Paste a funder's RFP and get a tailored grant application draft in minutes. Free preview, no account needed. Unlimited full drafts from $49/month.">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://grant3.netlify.app/">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Grant Application Draft Generator for Nonprofits | Grantwright">
+<meta property="og:description" content="Paste a funder's RFP and get a tailored grant application draft in minutes — not a generic template.">
+<meta property="og:site_name" content="Grantwright">
+<meta property="og:url" content="https://grant3.netlify.app/">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Grant Application Draft Generator for Nonprofits | Grantwright">
+<meta name="twitter:description" content="Paste a funder's RFP and get a tailored grant application draft in minutes.">
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#2F4538">
+<link rel="icon" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Grantwright">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Grantwright",
+  "applicationCategory": "BusinessApplication",
+  "operatingSystem": "Web",
+  "description": "Generates tailored, funder-matched grant application drafts for small nonprofits without a dedicated grant writer.",
+  "offers": [
+    { "@type": "Offer", "name": "Monthly", "price": "49.00", "priceCurrency": "USD" },
+    { "@type": "Offer", "name": "Lifetime", "price": "399.00", "priceCurrency": "USD" }
+  ]
+}
+</script>
+</head>
+<body>
+
+<div id="appShell">
+
+  <header class="app-bar">
+    <div class="app-bar-brand">
+      <div class="mark small">G</div>
+      <span id="appBarTitle">Grantwright</span>
+    </div>
+    <span class="app-bar-status" id="memberBadge" hidden>Full access</span>
+  </header>
+
+  <main class="app-content">
+
+    <!-- ================= NEW DRAFT ================= -->
+    <section class="app-screen active" id="screen-new">
+
+      <div id="introCard" class="intro-card">
+        <span class="eyebrow">For small nonprofits without a grant writer on staff</span>
+        <h1>Grant applications, written to win.</h1>
+        <p class="sub">Paste the funder's guidelines. Get a preview in about a minute, free and without an account. Unlock full drafts when you're ready to send.</p>
+        <div class="trust-row">
+          <span class="trust-chip">Free preview, no signup</span>
+          <span class="trust-chip">Editable before you send</span>
+          <span class="trust-chip">Unlimited drafts once you pay</span>
+        </div>
+
+        <div class="why-us">
+          <h2 class="why-us-title">Why nonprofits use it</h2>
+          <ul class="why-us-list">
+            <li><strong>Built for grants, not general writing.</strong> Funder-priority matching and request-type framing are applied for you. You never write a prompt.</li>
+            <li><strong>Remembers your organization.</strong> Enter the details once and every later draft reuses them.</li>
+            <li><strong>Honest by design.</strong> It will not invent statistics or outcomes you did not provide.</li>
+            <li><strong>Priced like a tool.</strong> Freelance grant writers charge $750 to $3,000 per application. This is a flat monthly or one-time cost for unlimited drafts.</li>
+          </ul>
+        </div>
+      </div>
+
+      <form id="draftForm" class="card" novalidate>
+        <h2 class="card-title">Tell us about the request</h2>
+
+        <div class="field">
+          <label for="orgName">Organization name</label>
+          <input type="text" id="orgName" name="orgName" required autocomplete="organization" placeholder="Riverside Family Clinic">
+        </div>
+
+        <div class="field">
+          <label for="orgEmail">Contact email</label>
+          <input type="email" id="orgEmail" name="orgEmail" required autocomplete="email" placeholder="you@organization.org">
+          <p class="field-hint" id="freeQuotaHint"></p>
+        </div>
+
+        <div class="field">
+          <label for="funderName">Funder name</label>
+          <input type="text" id="funderName" name="funderName" required placeholder="Community Health Access Fund">
+        </div>
+
+        <div class="field">
+          <label for="rfpText">Funder guidelines or RFP text</label>
+          <textarea id="rfpText" name="rfpText" required placeholder="Paste the funder's RFP, priorities, or guidelines here. The more specific, the better the draft."></textarea>
+          <div class="upload-row">
+            <label for="rfpFile" class="upload-btn"><span id="uploadLabel">Or upload a .txt file</span></label>
+            <input type="file" id="rfpFile" accept=".txt,.md,.eml" hidden>
+          </div>
+          <div class="detected-badge" id="requestTypeBadge" hidden></div>
+        </div>
+
+        <button type="button" id="toggleDetails" class="link-btn">Add program and org details (improves accuracy)</button>
+
+        <div class="field-group" id="detailsGroup" hidden>
+          <div class="field">
+            <label for="orgMission">What does your organization do?</label>
+            <textarea id="orgMission" name="orgMission" placeholder="We run a sliding-scale health clinic serving uninsured adults in East County."></textarea>
+          </div>
+
+          <div class="field">
+            <label for="requestType">Type of request</label>
+            <select id="requestType" name="requestType">
+              <option value="Not specified / unclear">Not specified / unclear</option>
+              <option value="General operating support">General operating support</option>
+              <option value="Program or project support">Program or project support</option>
+              <option value="Capacity building">Capacity building</option>
+              <option value="Capital or equipment">Capital or equipment</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="progName">Program or project name</label>
+            <input type="text" id="progName" name="progName" placeholder="Evening Walk-In Access Program">
+          </div>
+
+          <div class="field">
+            <label for="amount">Amount requested</label>
+            <input type="text" id="amount" name="amount" inputmode="numeric" placeholder="$45,000">
+          </div>
+
+          <div class="field">
+            <label for="deadline">Application deadline</label>
+            <input type="date" id="deadline" name="deadline">
+          </div>
+
+          <div class="field">
+            <label for="outcomes">Outcomes or evidence so far (even informal)</label>
+            <textarea id="outcomes" name="outcomes" placeholder="Sliding-scale visits grew over the past two years; staff report fewer ER referrals."></textarea>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary btn-full" id="generateBtn">Generate my draft</button>
+        <p class="error-msg" id="errorMsg"></p>
+      </form>
+
+      <!-- ================= RESULT ================= -->
+      <div class="output-view" id="outputSection" hidden>
+        <button type="button" class="back-btn" id="backToFormBtn">Start another draft</button>
+
+        <div class="doc">
+          <div class="doc-head">
+            <span id="docHeadLabel">Draft preview</span>
+            <div class="mark small">G</div>
+          </div>
+          <div class="doc-body-wrap">
+            <div class="doc-body" id="draftOutput"></div>
+            <div class="doc-fade" id="docFade"></div>
+          </div>
+
+          <div class="doc-foot" id="lockedFoot">
+            <div class="unlock-pitch">
+              <p class="unlock-headline">This is a preview of the opening.</p>
+              <p class="unlock-sub">Unlock to get the complete 700–900 word application, written by Claude — plus unlimited drafts, editing, and download.</p>
+            </div>
+            <div class="plan-picker" id="planPicker"></div>
+            <button class="doc-btn filled btn-full" id="unlockBtn" type="button">Unlock full drafts</button>
+            <p class="unlock-fine">Secure checkout by Stripe. Cancel anytime.</p>
+          </div>
+
+          <div class="doc-foot" id="unlockedFoot" hidden>
+            <button class="doc-btn filled" id="copyBtn" type="button">Copy draft</button>
+            <button class="doc-btn" id="downloadBtn" type="button">Download .txt</button>
+          </div>
+        </div>
+
+        <p class="edit-hint" id="editHint" hidden>Tap the draft to edit it. Changes save on this device.</p>
+        <p class="error-msg" id="resultError"></p>
+
+        <div class="context-box" id="contextBox" hidden>
+          <span class="context-label">Referenced context</span>
+          <ul id="contextList"></ul>
+          <p class="context-disclaimer">General grant-writing guidance. Verify specifics against the funder's own guidelines before sending.</p>
+        </div>
+
+        <p class="disclaimer">Not a guarantee of funding — the funder's decision is final. Check the draft against their actual word limits and format before submitting.</p>
+      </div>
+    </section>
+
+    <!-- ================= HISTORY ================= -->
+    <section class="app-screen" id="screen-history">
+      <h2 class="screen-title">My drafts</h2>
+      <p class="screen-sub">Drafts are saved on this device. Log in to reach them from anywhere.</p>
+
+      <div class="card notice" id="loginPrompt" hidden>
+        <p>Log in to sync your drafts across devices.</p>
+        <button type="button" class="btn-primary btn-full" id="goToAccountBtn">Log in or sign up</button>
+      </div>
+
+      <div id="historyList"></div>
+      <p class="empty-state" id="historyEmpty">No drafts yet. Start one from the New tab.</p>
+    </section>
+
+    <!-- ================= PRICING ================= -->
+    <section class="app-screen" id="screen-pricing">
+      <h2 class="screen-title">Pricing</h2>
+      <p class="screen-sub">Previews are free. Pay once and every draft you generate is complete and editable.</p>
+      <div id="pricingCards"></div>
+
+      <div class="card compare">
+        <h3>What you get when you unlock</h3>
+        <ul>
+          <li>Full 700–900 word application narratives written by Claude, not the shorter preview model</li>
+          <li>Unlimited drafts for every funder you apply to</li>
+          <li>Editing, copy, and download on every draft</li>
+          <li>Old previews can be rewritten in full at no extra cost</li>
+          <li>Drafts synced to your account across devices</li>
+        </ul>
+      </div>
+      <p class="disclaimer">Prices in USD. Monthly plans can be cancelled at any time from your account.</p>
+    </section>
+
+    <!-- ================= ACCOUNT ================= -->
+    <section class="app-screen" id="screen-account">
+      <h2 class="screen-title">Account</h2>
+      <p class="screen-sub">An account keeps your drafts and your access together.</p>
+
+      <div class="card" id="authCard">
+        <div class="auth-tabs">
+          <button type="button" class="auth-tab active" id="authTabLogin">Log in</button>
+          <button type="button" class="auth-tab" id="authTabSignup">Sign up</button>
+        </div>
+
+        <form id="loginForm" novalidate>
+          <div class="field"><label for="loginEmail">Email</label><input type="email" id="loginEmail" autocomplete="email" required></div>
+          <div class="field"><label for="loginPassword">Password</label><input type="password" id="loginPassword" autocomplete="current-password" required></div>
+          <button type="submit" class="btn-primary btn-full" id="loginSubmitBtn">Log in</button>
+          <p class="error-msg" id="loginMsg"></p>
+        </form>
+
+        <form id="signupForm" novalidate hidden>
+          <div class="field"><label for="signupEmail">Email</label><input type="email" id="signupEmail" autocomplete="email" required></div>
+          <div class="field"><label for="signupPassword">Password (8 characters or more)</label><input type="password" id="signupPassword" autocomplete="new-password" minlength="8" required></div>
+          <button type="submit" class="btn-primary btn-full" id="signupSubmitBtn">Create account</button>
+          <p class="error-msg" id="signupMsg"></p>
+        </form>
+      </div>
+
+      <div class="card" id="loggedInCard" hidden>
+        <h3 class="card-title small">Signed in</h3>
+        <p class="screen-sub" id="loggedInEmail"></p>
+        <p class="plan-line" id="planLine"></p>
+        <button type="button" class="doc-btn" id="manageBillingBtn" hidden>Manage billing</button>
+        <button type="button" class="btn-primary btn-full" id="logoutBtn">Log out</button>
+      </div>
+    </section>
+
+    <!-- ================= HELP ================= -->
+    <section class="app-screen" id="screen-help">
+      <h2 class="screen-title">Common questions</h2>
+
+      <div class="faq-item">
+        <h3>What does the free preview actually give me?</h3>
+        <p>A real draft written from your intake and the funder's guidelines, cut off partway through. It shows you the tone and the argument before you spend anything.</p>
+      </div>
+      <div class="faq-item">
+        <h3>What changes when I pay?</h3>
+        <p>Paid drafts are written by Claude and run 700 to 900 words with a full structure: need, funder fit, program, evidence, budget use, and a closing ask. You can also edit, copy, download, and rewrite any earlier preview in full.</p>
+      </div>
+      <div class="faq-item">
+        <h3>What if my program doesn't have hard outcomes data?</h3>
+        <p>Most small nonprofits don't. It works with what you have — intake counts, staff observations, past program numbers — and writes honestly instead of inventing statistics.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Do you guarantee funding?</h3>
+        <p>No one honestly can. What you get is a draft matched to that funder's language and priorities, fast.</p>
+      </div>
+      <div class="faq-item">
+        <h3>How is this different from a general AI chatbot?</h3>
+        <p>Grant-writing practice is applied automatically, your organization's details carry across drafts, and everything stays in one place. You never write a prompt.</p>
+      </div>
+      <div class="faq-item">
+        <h3>Can I cancel?</h3>
+        <p>Yes. Monthly plans cancel from the Account tab and stay active until the end of the period. Lifetime access does not expire.</p>
+      </div>
+
+      <div class="contact-card">
+        <h3>Still have a question?</h3>
+        <p>Email us and we usually reply within one business day.</p>
+        <a href="mailto:hello@grantwright.co" class="contact-link">hello@grantwright.co</a>
+      </div>
+
+      <p class="footer-links">
+        <a href="/privacy.html">Privacy</a> · <a href="/terms.html">Terms</a>
+      </p>
+      <p class="disclaimer">Grantwright is an independent service and is not affiliated with any funder or foundation.</p>
+    </section>
+
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="new" aria-label="New draft">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>New</span>
+    </button>
+    <button class="nav-btn" data-tab="history" aria-label="My drafts">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M12 7v5l3 3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Drafts</span>
+    </button>
+    <button class="nav-btn" data-tab="pricing" aria-label="Pricing">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 8h16v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8z" stroke="currentColor" stroke-width="2"/><path d="M4 8l2.5-4h11L20 8M12 12v5M9.5 13.5h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Pricing</span>
+    </button>
+    <button class="nav-btn" data-tab="help" aria-label="Help">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/><path d="M9.5 9a2.5 2.5 0 0 1 5 0c0 1.7-2.5 2-2.5 3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.5" r="0.9" fill="currentColor"/></svg>
+      <span>Help</span>
+    </button>
+    <button class="nav-btn" data-tab="account" aria-label="Account">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="8" r="3.5" stroke="currentColor" stroke-width="2"/><path d="M5 20c1.2-3.5 4-5.5 7-5.5s5.8 2 7 5.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>Account</span>
+    </button>
+  </nav>
+
+</div>
+
+<script src="/script.js"></script>
+</body>
+</html>
