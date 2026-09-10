@@ -107,7 +107,7 @@ function renderPlanPicker() {
 }
 
 const PLAN_COPY = {
-  single: ['One complete draft, written by Claude', 'Edit, copy and download it', 'No subscription, nothing to cancel', 'Best if you apply a few times a year'],
+  single: ['One complete application narrative, start to finish', 'Edit, copy and download it', 'No subscription, nothing to cancel', 'Best if you apply a few times a year'],
   monthly: ['Unlimited full drafts', 'Rewrite any earlier preview free', 'Drafts synced to your account', 'Cancel any time']
 };
 
