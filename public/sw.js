@@ -1,10 +1,10 @@
-// Cache the static shell only. Never cache /api/ responses, and always try the
-// network first for HTML so a deploy is picked up immediately.
-const CACHE = 'grantwright-v3';
-const SHELL = ['/style.css', '/script.js', '/icon-192.png', '/icon-512.png', '/manifest.json'];
+// Cache icons only. CSS and JS go network-first so a deploy reaches returning
+// visitors immediately — cache-first on those meant stale code shipped forever.
+const CACHE = 'grantwright-v4';
+const PRECACHE = ['/icon-192.png', '/icon-512.png', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).catch(() => {}));
+  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).catch(() => {}));
   self.skipWaiting();
 });
 
@@ -21,13 +21,21 @@ self.addEventListener('fetch', (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/')) return;
 
-  const isDocument = event.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname === '/';
-  if (isDocument) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+  const isCode = /\.(?:html|js|css)$/.test(url.pathname) || url.pathname === '/' || url.pathname.endsWith('/');
+
+  if (isCode) {
+    // Network first, cache only as an offline fallback.
+    event.respondWith(
+      fetch(event.request)
+        .then((res) => {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, copy)).catch(() => {});
+          return res;
+        })
+        .catch(() => caches.match(event.request))
+    );
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
-  );
+  event.respondWith(caches.match(event.request).then((hit) => hit || fetch(event.request)));
 });
