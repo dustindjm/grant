@@ -149,9 +149,9 @@ console.log('\n4. Checkout session');
   check('order id attached', sent.includes(`client_reference_id=${orderId}`));
   check('success url points home', sent.includes('paid=true'));
 
-  const life = await checkout(post('/api/create-checkout-session', { plan: 'lifetime', orderId }));
-  await life.json();
-  check('lifetime uses one-time payment mode', decodeURIComponent(globalThis.__lastStripeBody).includes('mode=payment'));
+  const one = await checkout(post('/api/create-checkout-session', { plan: 'single', orderId }));
+  await one.json();
+  check('single draft uses one-time payment mode', decodeURIComponent(globalThis.__lastStripeBody).includes('mode=payment'));
 }
 
 console.log('\n5. Payment unlocks and rewrites with Claude');
@@ -211,7 +211,8 @@ console.log('\n8. Session-scoped data');
   const session = await (await me(new Request('https://x/api/me', { headers: { cookie } }))).json();
   check('me reports logged in', session.loggedIn === true);
   check('me reports membership', session.member === true);
-  check('me exposes plans', session.plans.length === 2);
+  check('me exposes both plans', session.plans.length === 2, String(session.plans.length));
+  check('single-draft plan is not a membership plan', session.plans.find((p) => p.id === 'single').grantsMembership === false);
 }
 
 console.log('\n9. Admin dashboard');
@@ -232,6 +233,65 @@ console.log('\n10. Upgrade endpoint guards');
   check('404 for unknown draft', missing.status === 404);
   const ok = await upgrade(post('/api/upgrade-draft', { orderId }, { cookie }));
   check('member can rewrite own draft', ok.status === 200, String(ok.status));
+}
+
+console.log('\n10b. A single-draft purchase unlocks one draft, not membership');
+{
+  const { fulfillCheckout } = await import('../netlify/lib/fulfill.mjs');
+  const { isMember } = await import('../netlify/lib/members.mjs');
+  const one = await generate(post('/api/generate-draft', { ...intake, orgEmail: 'oneoff@example.org', funderName: 'One Off Fund' }));
+  const oneBody = await one.json();
+  check('preview issued to new email', oneBody.preview === true, String(one.status));
+
+  await fulfillCheckout({
+    id: 'cs_single_1',
+    payment_status: 'paid',
+    mode: 'payment',
+    customer_details: { email: 'oneoff@example.org' },
+    client_reference_id: oneBody.id,
+    metadata: { orderId: oneBody.id, plan: 'single', orgEmail: 'oneoff@example.org' }
+  });
+
+  const stillNotMember = !(await isMember('oneoff@example.org'));
+  check('buyer did NOT become a member', stillNotMember);
+
+  const after = await generate(post('/api/generate-draft', { ...intake, orgEmail: 'oneoff@example.org', funderName: 'Another Fund' }));
+  const afterBody = await after.json();
+  check('their next draft is still a preview', afterBody.preview === true, String(after.status));
+
+  const rewrite = await upgrade(post('/api/upgrade-draft', { orderId: oneBody.id }));
+  check('but they can rewrite the draft they paid for', rewrite.status === 200, String(rewrite.status));
+}
+
+console.log('\n10c. Abandoned-preview follow-up');
+{
+  const followUp = (await import('../netlify/functions/follow-up.mjs')).default;
+  const { getOrder, saveOrder } = await import('../netlify/lib/orders.mjs');
+  const getDraft = (await import('../netlify/functions/get-draft.mjs')).default;
+
+  const fresh = await (await generate(post('/api/generate-draft', { ...intake, orgEmail: 'lapsed@example.org', funderName: 'Lapsed Fund' }))).json();
+
+  let run = await (await followUp()).json();
+  check('does not email a draft made minutes ago', run.sent === 0, JSON.stringify(run));
+
+  // Age it into the window.
+  const aged = await getOrder(fresh.id);
+  aged.createdAt = Date.now() - 30 * 60 * 60 * 1000;
+  await saveOrder(aged);
+
+  run = await (await followUp()).json();
+  check('emails a 30-hour-old unpaid preview', run.sent === 1, JSON.stringify(run));
+
+  run = await (await followUp()).json();
+  check('never emails the same draft twice', run.sent === 0, JSON.stringify(run));
+
+  const resume = await getDraft(new Request(`https://x/api/draft?id=${fresh.id}`));
+  const resumeBody = await resume.json();
+  check('email link resolves the draft', resumeBody.order?.id === fresh.id);
+  check('resume link returns preview text only', resumeBody.order.preview === true);
+
+  const gone = await getDraft(new Request('https://x/api/draft?id=does-not-exist'));
+  check('unknown draft id is a 404', gone.status === 404);
 }
 
 console.log('\n11. Stripe webhook signature');

@@ -17,8 +17,12 @@ export default async (req) => {
   if (!order) return json({ error: 'That draft no longer exists.' }, 404);
 
   const sessionEmail = await getSessionEmail(req);
+  // Either an active member, or someone who already paid for this one draft.
   const member = (await isMember(order.orgEmail)) || (sessionEmail ? await isMember(sessionEmail) : false);
-  if (!member) return json({ error: 'Unlock full drafts to generate the complete version.' }, 402);
+  const paidForThisDraft = !!order.paidAt;
+  if (!member && !paidForThisDraft) {
+    return json({ error: 'Unlock this draft to generate the complete version.' }, 402);
+  }
 
   // Only the owner of the draft can rewrite it.
   const owns = sessionEmail === order.orgEmail || sessionEmail === order.accountEmail || !sessionEmail;

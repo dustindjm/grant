@@ -1,39 +1,29 @@
-/* Grantwright — client logic
-   Free previews come from Gemini via /api/generate-draft.
-   Paying members get the full Claude draft from the same endpoint. */
+/* Grantwright — client logic.
+   Free previews come from Gemini; paid drafts come from Claude. */
 
 const $ = (id) => document.getElementById(id);
 
 const state = {
   user: null,
-  isMember: false,
+  member: false,
   plan: null,
   plans: [],
-  selectedPlan: 'monthly',
+  selected: 'single',
   activeId: null,
   freeLimit: 3
 };
 
-// ---------------------------------------------------------------- navigation
-const navButtons = document.querySelectorAll('.nav-btn');
-const screens = document.querySelectorAll('.app-screen');
-const TAB_TITLES = { new: 'Grantwright', history: 'My drafts', pricing: 'Pricing', help: 'Help', account: 'Account' };
+const GUIDES = [
+  { slug: 'how-to-write-a-grant-application', title: 'How to write a grant application', blurb: 'The seven sections nearly every application asks for, and what reviewers are actually looking for in each.' },
+  { slug: 'general-operating-support-grants', title: 'Winning general operating support', blurb: 'Unrestricted money is judged on stability and governance, not program metrics. How to make that case.' },
+  { slug: 'grant-writing-without-outcomes-data', title: 'Grant writing without outcomes data', blurb: 'What to write when you have no evaluation budget and no clean numbers to point at.' },
+  { slug: 'reading-a-funder-rfp', title: 'How to read a funder RFP', blurb: 'The signals in a guidelines page that tell you whether you are even eligible before you spend a weekend.' },
+  { slug: 'capacity-building-grants', title: 'Capacity building grant requests', blurb: 'Why growth framing loses and constraint framing wins.' },
+  { slug: 'grant-budget-narrative', title: 'Writing the budget narrative', blurb: 'The section most small nonprofits rush, and the one finance reviewers read first.' }
+];
 
-function switchTab(tab) {
-  const target = $('screen-' + tab);
-  if (!target) return;
-  screens.forEach((s) => s.classList.remove('active'));
-  target.classList.add('active');
-  navButtons.forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
-  $('appBarTitle').textContent = TAB_TITLES[tab] || 'Grantwright';
-  document.querySelector('.app-content').scrollTop = 0;
-}
-navButtons.forEach((btn) => btn.addEventListener('click', () => switchTab(btn.dataset.tab)));
-
-// ------------------------------------------------------------------ helpers
-function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-}
+// ---------------------------------------------------------------- helpers
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 async function api(path, options = {}) {
   const res = await fetch(path, {
@@ -51,251 +41,232 @@ async function api(path, options = {}) {
   return data;
 }
 
-function showError(el, message) {
+function showAlert(el, message) {
   el.textContent = message;
   el.classList.add('visible');
 }
-function clearError(el) {
+function hideAlert(el) {
   el.classList.remove('visible');
 }
-
-function busy(button, label) {
-  button.dataset.originalLabel = button.dataset.originalLabel || button.textContent;
-  button.disabled = true;
-  button.innerHTML = `<span class="spinner-inline"></span>${escapeHtml(label)}`;
+function busy(btn, label) {
+  btn.dataset.label = btn.dataset.label || btn.textContent;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span>${esc(label)}`;
 }
-function idle(button, label) {
-  button.disabled = false;
-  button.textContent = label || button.dataset.originalLabel || 'Continue';
+function idle(btn, label) {
+  btn.disabled = false;
+  btn.textContent = label || btn.dataset.label || 'Continue';
 }
 
-// -------------------------------------------------------------- local drafts
-const HISTORY_KEY = 'grantwright_history_v2';
+// ------------------------------------------------------------ local drafts
+const KEY = 'grantwright_drafts_v3';
 
-function loadHistory() {
+function loadDrafts() {
   try {
-    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]');
+    const parsed = JSON.parse(localStorage.getItem(KEY) || '[]');
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
   }
 }
-function saveHistory(entries) {
+function saveDrafts(list) {
   try {
-    localStorage.setItem(HISTORY_KEY, JSON.stringify(entries.slice(-100)));
+    localStorage.setItem(KEY, JSON.stringify(list.slice(-100)));
   } catch {
-    /* storage full or blocked — the server copy is the real one */
+    /* storage blocked — the server copy is authoritative */
   }
 }
-function upsertEntry(entry) {
-  const entries = loadHistory();
-  const idx = entries.findIndex((e) => e.id === entry.id);
-  if (idx >= 0) entries[idx] = { ...entries[idx], ...entry };
-  else entries.push(entry);
-  saveHistory(entries);
-  renderHistory();
-  return entry;
+function upsert(entry) {
+  const list = loadDrafts();
+  const i = list.findIndex((e) => e.id === entry.id);
+  if (i >= 0) list[i] = { ...list[i], ...entry };
+  else list.push(entry);
+  saveDrafts(list);
+  renderDrafts();
+  return list.find((e) => e.id === entry.id);
 }
-function findEntry(id) {
-  return loadHistory().find((e) => e.id === id) || null;
-}
+const findDraft = (id) => loadDrafts().find((e) => e.id === id) || null;
 
-// ------------------------------------------------------------------- pricing
+// ---------------------------------------------------------------- pricing
 function renderPlanPicker() {
   const picker = $('planPicker');
   picker.innerHTML = '';
-  state.plans.forEach((plan) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'plan-option' + (plan.id === state.selectedPlan ? ' selected' : '');
-    btn.innerHTML = `<span class="plan-name">${escapeHtml(plan.label)}</span>
-      <span class="plan-price">${escapeHtml(plan.price)}<span class="plan-suffix">${escapeHtml(plan.suffix)}</span></span>`;
-    btn.addEventListener('click', () => {
-      state.selectedPlan = plan.id;
+  picker.style.gridTemplateColumns = `repeat(${Math.min(state.plans.length, 3)},1fr)`;
+  state.plans.forEach((p) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'plan-option' + (p.id === state.selected ? ' selected' : '');
+    b.innerHTML = `<span class="plan-label">${esc(p.label)}</span>
+      <span class="plan-value">${esc(p.price)}<span>${esc(p.suffix)}</span></span>`;
+    b.addEventListener('click', () => {
+      state.selected = p.id;
       renderPlanPicker();
     });
-    picker.appendChild(btn);
+    picker.appendChild(b);
   });
 }
+
+const PLAN_COPY = {
+  single: ['One complete draft, written by Claude', 'Edit, copy and download it', 'No subscription, nothing to cancel', 'Best if you apply a few times a year'],
+  monthly: ['Unlimited full drafts', 'Rewrite any earlier preview free', 'Drafts synced to your account', 'Cancel any time']
+};
 
 function renderPricingCards() {
   const wrap = $('pricingCards');
   wrap.innerHTML = '';
-  state.plans.forEach((plan, i) => {
+  wrap.style.gridTemplateColumns = `repeat(${Math.min(state.plans.length, 3)},1fr)`;
+  state.plans.forEach((p) => {
     const card = document.createElement('div');
-    card.className = 'pricing-card' + (i === 0 ? ' featured' : '');
+    card.className = 'card price-card' + (p.id === 'monthly' ? ' featured' : '');
+    const bullets = (PLAN_COPY[p.id] || []).map((t) => `<li><span class="check">✓</span>${esc(t)}</li>`).join('');
     card.innerHTML = `
-      <h3>${escapeHtml(plan.label)}</h3>
-      <div class="big-price">${escapeHtml(plan.price)}<span>${escapeHtml(plan.suffix)}</span></div>
-      <p>${plan.mode === 'subscription' ? 'Unlimited full drafts while your plan is active. Cancel anytime.' : 'Pay once. Unlimited full drafts, no renewal.'}</p>
-      <button type="button" class="btn-primary">${state.isMember ? 'You already have access' : 'Choose ' + escapeHtml(plan.label)}</button>
-    `;
-    const button = card.querySelector('button');
-    button.disabled = state.isMember;
-    button.addEventListener('click', () => {
-      state.selectedPlan = plan.id;
-      startCheckout(button);
+      <h3>${esc(p.label)}</h3>
+      <div class="price-amount">${esc(p.price)}<span>${esc(p.suffix)}</span></div>
+      <ul>${bullets}</ul>`;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = p.id === 'monthly' ? 'btn btn-primary' : 'btn btn-ghost';
+    btn.textContent = state.member ? 'You have access' : 'Choose ' + p.label;
+    btn.disabled = state.member;
+    btn.addEventListener('click', () => {
+      state.selected = p.id;
+      renderPlanPicker();
+      if (state.activeId) startCheckout(btn);
+      else {
+        document.getElementById('start').scrollIntoView();
+        $('orgName').focus();
+      }
     });
+    card.appendChild(btn);
     wrap.appendChild(card);
   });
 }
 
-// -------------------------------------------------------------- form helpers
+function renderGuides() {
+  $('guideGrid').innerHTML = GUIDES.slice(0, 6)
+    .map((g) => `<a class="guide-card" href="/guides/${g.slug}.html"><h3>${esc(g.title)}</h3><p>${esc(g.blurb)}</p></a>`)
+    .join('');
+  $('footerGuides').innerHTML = GUIDES.slice(0, 4)
+    .map((g) => `<li><a href="/guides/${g.slug}.html">${esc(g.title)}</a></li>`)
+    .join('');
+}
+
+// ------------------------------------------------------------------- form
 const form = $('draftForm');
-const errorMsg = $('errorMsg');
-const resultError = $('resultError');
-const detailsGroup = $('detailsGroup');
-const toggleDetails = $('toggleDetails');
-const rfpTextArea = $('rfpText');
-const requestTypeSelect = $('requestType');
-const requestTypeBadge = $('requestTypeBadge');
+const rfp = $('rfpText');
 
-function showFormScreen() {
-  $('introCard').hidden = false;
-  form.hidden = false;
-  $('outputSection').hidden = true;
-  clearError(resultError);
-}
-function showResultScreen() {
-  $('introCard').hidden = true;
-  form.hidden = true;
-  $('outputSection').hidden = false;
-}
-$('backToFormBtn').addEventListener('click', showFormScreen);
-
-toggleDetails.addEventListener('click', () => {
-  const hidden = detailsGroup.hasAttribute('hidden');
-  detailsGroup.toggleAttribute('hidden', !hidden);
-  toggleDetails.textContent = hidden ? 'Hide program and org details' : 'Add program and org details (improves accuracy)';
+$('toggleDetails').addEventListener('click', () => {
+  const group = $('detailsGroup');
+  const wasHidden = group.hasAttribute('hidden');
+  group.toggleAttribute('hidden', !wasHidden);
+  $('toggleDetails').textContent = wasHidden ? 'Hide program and org details' : 'Add program and org details (improves accuracy)';
 });
 
-const REQUEST_TYPE_KEYWORDS = [
-  { match: ['general operating', 'unrestricted', 'operating support'], value: 'General operating support' },
-  { match: ['capacity building', 'capacity-building', 'organizational capacity', 'infrastructure'], value: 'Capacity building' },
-  { match: ['capital campaign', 'equipment', 'renovation', 'construction', 'capital request'], value: 'Capital or equipment' },
-  { match: ['program support', 'project support', 'program grant', 'project grant'], value: 'Program or project support' }
+const DETECT = [
+  { kw: ['general operating', 'unrestricted', 'operating support'], value: 'General operating support' },
+  { kw: ['capacity building', 'capacity-building', 'organizational capacity'], value: 'Capacity building' },
+  { kw: ['capital campaign', 'equipment', 'renovation', 'construction'], value: 'Capital or equipment' },
+  { kw: ['program support', 'project support', 'program grant'], value: 'Program or project support' }
 ];
 
-rfpTextArea.addEventListener('input', () => {
-  const text = rfpTextArea.value.trim().toLowerCase();
-  if (text.length < 40) {
-    requestTypeBadge.hidden = true;
-    return;
-  }
-  const hit = REQUEST_TYPE_KEYWORDS.find((entry) => entry.match.some((kw) => text.includes(kw)));
-  if (!hit) {
-    requestTypeBadge.hidden = true;
-    return;
-  }
-  requestTypeBadge.hidden = false;
-  requestTypeBadge.textContent = `Detected request type: ${hit.value}. Change it below if that's wrong.`;
-  requestTypeSelect.value = hit.value;
-  if (detailsGroup.hasAttribute('hidden')) {
-    detailsGroup.removeAttribute('hidden');
-    toggleDetails.textContent = 'Hide program and org details';
-  }
+rfp.addEventListener('input', () => {
+  const text = rfp.value.trim().toLowerCase();
+  const badge = $('detectBadge');
+  if (text.length < 40) return hideAlert(badge);
+  const hit = DETECT.find((d) => d.kw.some((k) => text.includes(k)));
+  if (!hit) return hideAlert(badge);
+  showAlert(badge, `Detected request type: ${hit.value}. Change it below if that's wrong.`);
+  $('requestType').value = hit.value;
+  if ($('detailsGroup').hasAttribute('hidden')) $('toggleDetails').click();
 });
 
 $('rfpFile').addEventListener('change', async (e) => {
   const file = e.target.files[0];
   if (!file) return;
-  if (file.size > 1_000_000) {
-    showError(errorMsg, 'That file is too large. Paste the relevant sections instead.');
-    return;
-  }
-  const text = await file.text();
-  rfpTextArea.value = text.trim().slice(0, 24000);
-  rfpTextArea.dispatchEvent(new Event('input'));
+  if (file.size > 1_000_000) return showAlert($('formError'), 'That file is too large. Paste the relevant sections instead.');
+  rfp.value = (await file.text()).trim().slice(0, 24000);
+  rfp.dispatchEvent(new Event('input'));
   $('uploadLabel').textContent = `Loaded: ${file.name}`;
 });
 
-// ----------------------------------------------------------------- rendering
-const draftOutput = $('draftOutput');
-const docFade = $('docFade');
+// -------------------------------------------------------------- rendering
+const output = $('draftOutput');
 
 function renderPreview(entry) {
-  draftOutput.textContent = entry.draft;
-  draftOutput.contentEditable = 'false';
-  draftOutput.classList.remove('unlocked');
-  docFade.classList.remove('hidden');
-  $('docHeadLabel').textContent = 'Draft preview';
+  output.textContent = entry.draft;
+  output.contentEditable = 'false';
+  $('docFade').hidden = false;
+  $('docLabel').textContent = 'Draft preview';
+  $('docChip').textContent = 'Preview';
+  $('docChip').className = 'chip';
   $('lockedFoot').hidden = false;
   $('unlockedFoot').hidden = true;
   $('editHint').hidden = true;
-  $('unlockBtn').textContent = state.isMember ? 'Write the full version' : 'Unlock full drafts';
+  $('unlockBtn').textContent = state.member ? 'Write the full version' : 'Unlock this draft';
+  $('planPicker').hidden = state.member;
   renderPlanPicker();
-  $('planPicker').hidden = state.isMember;
 }
 
 function renderFull(entry) {
-  draftOutput.textContent = entry.draft;
-  draftOutput.contentEditable = 'true';
-  draftOutput.classList.add('unlocked');
-  docFade.classList.add('hidden');
-  $('docHeadLabel').textContent = 'Full draft — editable';
+  output.textContent = entry.draft;
+  output.contentEditable = 'true';
+  $('docFade').hidden = true;
+  $('docLabel').textContent = 'Full draft — editable';
+  $('docChip').textContent = 'Full';
+  $('docChip').className = 'chip chip-blue';
   $('lockedFoot').hidden = true;
   $('unlockedFoot').hidden = false;
+  $('unlockedFoot').style.display = 'flex';
   $('editHint').hidden = false;
 }
 
-function renderContext(points) {
-  const box = $('contextBox');
-  if (!points || !points.length) {
-    box.hidden = true;
-    return;
-  }
-  box.hidden = false;
-  $('contextList').innerHTML = points.map((p) => `<li>${escapeHtml(p)}</li>`).join('');
-}
-
-function openEntry(entry) {
+function openDraft(entry) {
   state.activeId = entry.id;
-  switchTab('new');
+  $('emptyState').hidden = true;
+  $('draftCard').hidden = false;
   if (entry.unlocked) renderFull(entry);
   else renderPreview(entry);
-  renderContext(entry.referencedPoints);
-  showResultScreen();
+
+  const points = entry.referencedPoints || [];
+  $('contextCard').hidden = !points.length;
+  $('contextList').innerHTML = points.map((p) => `<li style="margin-bottom:8px">${esc(p)}</li>`).join('');
+  $('draftCard').scrollIntoView({ block: 'nearest' });
 }
 
-draftOutput.addEventListener('input', () => {
-  if (!draftOutput.classList.contains('unlocked') || !state.activeId) return;
-  upsertEntry({ id: state.activeId, draft: draftOutput.textContent });
+output.addEventListener('input', () => {
+  if (output.contentEditable === 'true' && state.activeId) upsert({ id: state.activeId, draft: output.textContent });
 });
 
-// ------------------------------------------------------------------- history
-function renderHistory() {
-  const entries = loadHistory().slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-  const list = $('historyList');
-  const empty = $('historyEmpty');
-  list.innerHTML = '';
+// --------------------------------------------------------------- history
+function renderDrafts() {
+  const list = loadDrafts().slice().sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const box = $('draftsList');
+  box.innerHTML = '';
+  $('draftsEmpty').hidden = list.length > 0;
 
-  if (!entries.length) {
-    empty.classList.add('visible');
-    return;
-  }
-  empty.classList.remove('visible');
-
-  entries.forEach((entry) => {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'history-item';
-    item.innerHTML = `
-      <span class="history-item-left">
-        <span class="history-item-title">${escapeHtml(entry.orgName || 'Draft')} — ${escapeHtml(entry.funderName || '')}</span>
-        <span class="history-item-meta">${new Date(entry.createdAt || Date.now()).toLocaleDateString()}</span>
+  list.forEach((entry) => {
+    const row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'list-row';
+    row.innerHTML = `<span>
+        <span class="list-row-title">${esc(entry.orgName || 'Draft')} → ${esc(entry.funderName || '')}</span><br>
+        <span class="list-row-meta">${new Date(entry.createdAt || Date.now()).toLocaleDateString()}</span>
       </span>
-      <span class="history-status ${entry.unlocked ? 'unlocked' : 'locked'}">${entry.unlocked ? 'Full' : 'Preview'}</span>`;
-    item.addEventListener('click', () => openEntry(findEntry(entry.id) || entry));
-    list.appendChild(item);
+      <span class="chip ${entry.unlocked ? 'chip-blue' : ''}">${entry.unlocked ? 'Full' : 'Preview'}</span>`;
+    row.addEventListener('click', () => {
+      openDraft(findDraft(entry.id) || entry);
+      document.getElementById('start').scrollIntoView();
+    });
+    box.appendChild(row);
   });
 }
 
-async function syncServerDrafts() {
+async function syncDrafts() {
   if (!state.user) return;
   try {
-    const data = await api('/api/my-drafts');
+    const data = await api('/api/my-drafts', { method: 'POST' });
     (data.drafts || []).forEach((d) =>
-      upsertEntry({
+      upsert({
         id: d.id,
         orgName: d.orgName,
         funderName: d.funderName,
@@ -306,41 +277,37 @@ async function syncServerDrafts() {
       })
     );
   } catch {
-    /* not logged in, or offline — local history still works */
+    /* offline or logged out */
   }
 }
 
-// ------------------------------------------------------------ generate draft
+// ------------------------------------------------------------- generation
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  clearError(errorMsg);
+  hideAlert($('formError'));
 
   const payload = {
     orgName: $('orgName').value.trim(),
     orgEmail: $('orgEmail').value.trim(),
     funderName: $('funderName').value.trim(),
-    rfpText: rfpTextArea.value.trim(),
+    rfpText: rfp.value.trim(),
     orgMission: $('orgMission').value.trim(),
-    requestType: requestTypeSelect.value,
+    requestType: $('requestType').value,
     progName: $('progName').value.trim(),
     amount: $('amount').value.trim(),
     deadline: $('deadline').value,
-    outcomes: $('outcomes').value.trim(),
-    plan: state.selectedPlan
+    outcomes: $('outcomes').value.trim()
   };
 
   if (!payload.orgName || !payload.orgEmail || !payload.funderName || !payload.rfpText) {
-    showError(errorMsg, "Fill in your organization name, email, the funder's name, and their guidelines.");
-    return;
+    return showAlert($('formError'), "Fill in your organization name, email, the funder's name, and their guidelines.");
   }
 
-  const button = $('generateBtn');
-  busy(button, 'Writing your draft…');
-
+  const btn = $('generateBtn');
+  busy(btn, 'Writing your draft…');
   try {
     const data = await api('/api/generate-draft', { method: 'POST', body: JSON.stringify(payload) });
-
-    const entry = upsertEntry({
+    const entry = upsert({
       id: data.id,
       orgName: payload.orgName,
       funderName: payload.funderName,
@@ -350,85 +317,73 @@ form.addEventListener('submit', async (e) => {
       referencedPoints: data.referencedPoints || [],
       unlocked: !!data.unlocked
     });
-
     if (typeof data.freePreviewsRemaining === 'number') {
-      $('freeQuotaHint').textContent = `${data.freePreviewsRemaining} free preview${data.freePreviewsRemaining === 1 ? '' : 's'} left for this email.`;
+      $('quotaHint').textContent = `${data.freePreviewsRemaining} free preview${data.freePreviewsRemaining === 1 ? '' : 's'} left for this email.`;
     }
-
-    openEntry(entry);
+    openDraft(entry);
   } catch (err) {
-    if (err.data?.limitReached) {
-      showError(errorMsg, err.message);
-      switchTab('pricing');
-    } else {
-      showError(errorMsg, err.message);
-    }
+    showAlert($('formError'), err.message);
+    if (err.data?.limitReached) document.getElementById('pricing').scrollIntoView();
   } finally {
-    idle(button, 'Generate my draft');
+    idle(btn, 'Generate my draft');
   }
 });
 
-// ------------------------------------------------------------------ checkout
-async function startCheckout(button) {
-  const original = button.textContent;
-  busy(button, 'Opening checkout…');
+// ---------------------------------------------------------------- payment
+async function startCheckout(btn) {
+  const label = btn.textContent;
+  busy(btn, 'Opening checkout…');
   try {
-    const entry = state.activeId ? findEntry(state.activeId) : null;
-    if (state.activeId) sessionStorage.setItem('gw_pending_order', state.activeId);
-
+    const entry = state.activeId ? findDraft(state.activeId) : null;
     const data = await api('/api/create-checkout-session', {
       method: 'POST',
       body: JSON.stringify({
-        plan: state.selectedPlan,
+        plan: state.selected,
         orderId: state.activeId || '',
         email: entry?.orgEmail || $('orgEmail').value.trim() || state.user || ''
       })
     });
     window.location.href = data.url;
   } catch (err) {
-    idle(button, original);
-    showError(resultError, err.message);
+    idle(btn, label);
+    showAlert($('resultError'), err.message);
   }
 }
 
 $('unlockBtn').addEventListener('click', async () => {
-  const button = $('unlockBtn');
-  clearError(resultError);
+  const btn = $('unlockBtn');
+  hideAlert($('resultError'));
 
-  // Already paid but looking at an old preview? Rewrite it with Claude instead
-  // of charging again.
-  if (state.isMember && state.activeId) {
-    busy(button, 'Writing the full draft…');
+  if (state.member && state.activeId) {
+    busy(btn, 'Writing the full draft…');
     try {
       const data = await api('/api/upgrade-draft', { method: 'POST', body: JSON.stringify({ orderId: state.activeId }) });
-      const entry = upsertEntry({ id: data.order.id, draft: data.order.draft, unlocked: true });
-      renderFull({ ...findEntry(entry.id), draft: data.order.draft });
+      upsert({ id: data.order.id, draft: data.order.draft, unlocked: true });
+      renderFull(findDraft(data.order.id));
     } catch (err) {
-      showError(resultError, err.message);
+      showAlert($('resultError'), err.message);
     } finally {
-      idle(button, 'Write the full version');
+      idle(btn, 'Write the full version');
     }
     return;
   }
-
-  startCheckout(button);
+  startCheckout(btn);
 });
 
 $('copyBtn').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText(draftOutput.textContent);
+    await navigator.clipboard.writeText(output.textContent);
     $('copyBtn').textContent = 'Copied';
     setTimeout(() => ($('copyBtn').textContent = 'Copy draft'), 1500);
   } catch {
-    showError(resultError, 'Your browser blocked the clipboard. Select the text and copy it manually.');
+    showAlert($('resultError'), 'Your browser blocked the clipboard. Select the text and copy it manually.');
   }
 });
 
 $('downloadBtn').addEventListener('click', () => {
-  const entry = findEntry(state.activeId);
+  const entry = findDraft(state.activeId);
   const name = entry ? `${entry.orgName}-${entry.funderName}` : 'grant-draft';
-  const blob = new Blob([draftOutput.textContent], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
+  const url = URL.createObjectURL(new Blob([output.textContent], { type: 'text/plain;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = `${name.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.txt`;
@@ -436,8 +391,14 @@ $('downloadBtn').addEventListener('click', () => {
   URL.revokeObjectURL(url);
 });
 
-// ---------------------------------------------------------------------- auth
-$('goToAccountBtn').addEventListener('click', () => switchTab('account'));
+// ------------------------------------------------------------------- auth
+document.querySelectorAll('.tab[data-panel]').forEach((tab) => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab[data-panel]').forEach((t) => t.classList.toggle('active', t === tab));
+    document.querySelectorAll('#account .panel').forEach((p) => p.classList.toggle('active', p.id === 'panel-' + tab.dataset.panel));
+  });
+});
+$('navAccount').addEventListener('click', () => $('tabAuth').click());
 
 $('authTabLogin').addEventListener('click', () => {
   $('authTabLogin').classList.add('active');
@@ -454,25 +415,24 @@ $('authTabSignup').addEventListener('click', () => {
 
 function applySession(data) {
   state.user = data.email || null;
-  state.isMember = !!data.member;
+  state.member = !!data.member;
   state.plan = data.plan || null;
   if (Array.isArray(data.plans) && data.plans.length) state.plans = data.plans;
-  if (data.freePreviewLimit) state.freeLimit = data.freePreviewLimit;
+  if (data.freePreviewLimit) {
+    state.freeLimit = data.freePreviewLimit;
+    $('quotaValue').textContent = `${data.freePreviewLimit} per email`;
+  }
 
-  $('memberBadge').hidden = !state.isMember;
   $('authCard').hidden = !!state.user;
   $('loggedInCard').hidden = !state.user;
-  $('loginPrompt').hidden = !!state.user;
-
   if (state.user) {
     $('loggedInEmail').textContent = state.user;
-    $('planLine').textContent = state.isMember
-      ? `Full access active${state.plan ? ` (${state.plan})` : ''}.`
-      : 'No paid plan yet. Previews only.';
-    $('manageBillingBtn').hidden = !(state.isMember && state.plan === 'monthly');
+    $('planValue').textContent = state.member ? `Full access${state.plan ? ` (${state.plan})` : ''}` : 'Previews only';
+    $('billingBtn').hidden = !(state.member && state.plan === 'monthly');
     if (!$('orgEmail').value) $('orgEmail').value = state.user;
   }
 
+  if (!state.plans.some((p) => p.id === state.selected)) state.selected = state.plans[0]?.id || 'single';
   renderPricingCards();
   renderPlanPicker();
 }
@@ -481,105 +441,86 @@ async function loadSession() {
   try {
     applySession(await api('/api/me'));
   } catch {
-    applySession({ loggedIn: false, plans: state.plans });
+    applySession({ plans: state.plans });
   }
 }
 
 $('loginForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  clearError($('loginMsg'));
-  const button = $('loginSubmitBtn');
-  busy(button, 'Logging in…');
+  hideAlert($('loginMsg'));
+  const btn = $('loginBtn');
+  busy(btn, 'Logging in…');
   try {
-    await api('/api/login', {
-      method: 'POST',
-      body: JSON.stringify({ email: $('loginEmail').value.trim(), password: $('loginPassword').value })
-    });
+    await api('/api/login', { method: 'POST', body: JSON.stringify({ email: $('loginEmail').value.trim(), password: $('loginPassword').value }) });
     await loadSession();
-    await syncServerDrafts();
+    await syncDrafts();
   } catch (err) {
-    showError($('loginMsg'), err.message);
+    showAlert($('loginMsg'), err.message);
   } finally {
-    idle(button, 'Log in');
+    idle(btn, 'Log in');
   }
 });
 
 $('signupForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  clearError($('signupMsg'));
-  const button = $('signupSubmitBtn');
-  busy(button, 'Creating account…');
+  hideAlert($('signupMsg'));
+  const btn = $('signupBtn');
+  busy(btn, 'Creating account…');
   try {
-    await api('/api/signup', {
-      method: 'POST',
-      body: JSON.stringify({ email: $('signupEmail').value.trim(), password: $('signupPassword').value })
-    });
+    await api('/api/signup', { method: 'POST', body: JSON.stringify({ email: $('signupEmail').value.trim(), password: $('signupPassword').value }) });
     await loadSession();
-    await syncServerDrafts();
+    await syncDrafts();
   } catch (err) {
-    showError($('signupMsg'), err.message);
+    showAlert($('signupMsg'), err.message);
   } finally {
-    idle(button, 'Create account');
+    idle(btn, 'Create account');
   }
 });
 
 $('logoutBtn').addEventListener('click', async () => {
-  const button = $('logoutBtn');
-  busy(button, 'Logging out…');
+  const btn = $('logoutBtn');
+  busy(btn, 'Logging out…');
   try {
     await api('/api/logout', { method: 'POST' });
   } catch {
-    /* log out locally regardless */
+    /* clear locally regardless */
   }
   await loadSession();
-  idle(button, 'Log out');
+  idle(btn, 'Log out');
 });
 
-$('manageBillingBtn').addEventListener('click', async () => {
-  const button = $('manageBillingBtn');
-  busy(button, 'Opening…');
+$('billingBtn').addEventListener('click', async () => {
+  const btn = $('billingBtn');
+  busy(btn, 'Opening…');
   try {
     const data = await api('/api/billing-portal', { method: 'POST' });
     window.location.href = data.url;
   } catch (err) {
-    idle(button, 'Manage billing');
-    alert(err.message);
+    idle(btn, 'Manage billing');
+    showAlert($('resultError'), err.message);
   }
 });
 
-// -------------------------------------------------------- return from Stripe
-async function handlePaymentReturn() {
+// ------------------------------------------------------- return from Stripe
+async function handleReturn() {
   const params = new URLSearchParams(window.location.search);
   const paid = params.get('paid');
   const sessionId = params.get('session_id');
-  const pendingId = sessionStorage.getItem('gw_pending_order');
   if (!paid) return;
 
   window.history.replaceState({}, '', window.location.pathname);
+  if (paid === 'false' || !sessionId) return;
 
-  if (paid === 'false') {
-    sessionStorage.removeItem('gw_pending_order');
-    const entry = pendingId ? findEntry(pendingId) : null;
-    if (entry) openEntry(entry);
-    return;
-  }
-
-  if (!sessionId) return;
-
-  const button = $('unlockBtn');
-  busy(button, 'Confirming payment…');
+  const btn = $('unlockBtn');
+  busy(btn, 'Confirming payment…');
   try {
     const data = await api('/api/verify-payment', { method: 'POST', body: JSON.stringify({ session_id: sessionId }) });
-
     if (!data.paid) {
-      showError(resultError, "We couldn't confirm that payment. If you were charged, email hello@grantwright.co.");
-      return;
+      return showAlert($('resultError'), "We couldn't confirm that payment. If you were charged, email dustindjm@outlook.com.");
     }
-
     await loadSession();
-
     if (data.order) {
-      const entry = upsertEntry({
+      upsert({
         id: data.order.id,
         orgName: data.order.orgName,
         funderName: data.order.funderName,
@@ -588,38 +529,57 @@ async function handlePaymentReturn() {
         referencedPoints: data.order.referencedPoints || [],
         unlocked: true
       });
-      openEntry(findEntry(entry.id));
-      if (data.upgradeError) {
-        showError(resultError, 'Payment went through, but the full rewrite failed. Tap "Write the full version" to retry.');
-      }
-    } else {
-      switchTab('new');
-      showFormScreen();
+      openDraft(findDraft(data.order.id));
+      document.getElementById('start').scrollIntoView();
+      if (data.upgradeError) showAlert($('resultError'), 'Payment went through, but the rewrite failed. Tap "Write the full version" to retry.');
     }
-    await syncServerDrafts();
+    await syncDrafts();
   } catch (err) {
-    showError(resultError, err.message);
+    showAlert($('resultError'), err.message);
   } finally {
-    idle(button, 'Unlock full drafts');
-    sessionStorage.removeItem('gw_pending_order');
+    idle(btn, 'Unlock this draft');
   }
 }
 
-// ---------------------------------------------------------------- boot-up
+// ------------------------------------------------- resume from email link
+async function openFromLink() {
+  const id = new URLSearchParams(window.location.search).get('draft');
+  if (!id) return;
+  window.history.replaceState({}, '', window.location.pathname);
+  try {
+    const local = findDraft(id);
+    const { order } = await api(`/api/draft?id=${encodeURIComponent(id)}`);
+    const entry = upsert({
+      id: order.id,
+      orgName: order.orgName,
+      funderName: order.funderName,
+      createdAt: order.createdAt,
+      draft: local?.unlocked ? local.draft : order.draft,
+      referencedPoints: order.referencedPoints || [],
+      unlocked: !!order.unlocked || !!local?.unlocked
+    });
+    openDraft(entry);
+    document.getElementById('start').scrollIntoView();
+  } catch {
+    /* expired or deleted — land on the form as usual */
+  }
+}
+
+// ------------------------------------------------------------------- boot
 (async function init() {
   state.plans = [
-    { id: 'monthly', label: 'Monthly', price: '$49', suffix: '/mo', mode: 'subscription' },
-    { id: 'lifetime', label: 'Lifetime', price: '$399', suffix: ' once', mode: 'payment' }
+    { id: 'single', label: 'Single draft', price: '$79', suffix: ' once', mode: 'payment' },
+    { id: 'monthly', label: 'Monthly', price: '$49', suffix: '/mo', mode: 'subscription' }
   ];
-  renderPlanPicker();
+  renderGuides();
   renderPricingCards();
-  renderHistory();
+  renderPlanPicker();
+  renderDrafts();
 
   await loadSession();
-  await syncServerDrafts();
-  await handlePaymentReturn();
+  await syncDrafts();
+  await handleReturn();
+  await openFromLink();
 
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
-  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();

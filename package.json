@@ -11,6 +11,8 @@
     "@netlify/blobs": "^8.1.0"
   },
   "scripts": {
+    "build:guides": "node build-guides.mjs",
+    "build": "node build-guides.mjs",
     "test": "node test/run.mjs",
     "dev": "netlify dev"
   }

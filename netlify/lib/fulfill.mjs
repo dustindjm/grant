@@ -1,5 +1,6 @@
 import { getOrder, saveOrder } from './orders.mjs';
 import { activateMember } from './members.mjs';
+import { getPlan } from './plans.mjs';
 import { generateFull } from './ai.mjs';
 import { sendEmail, draftEmailHtml } from './email.mjs';
 import { escapeHtml } from './http.mjs';
@@ -37,10 +38,12 @@ export async function fulfillCheckout(session) {
   const email = (session.customer_details?.email || session.customer_email || session.metadata?.orgEmail || '')
     .trim()
     .toLowerCase();
-  const plan = session.metadata?.plan || (session.mode === 'subscription' ? 'monthly' : 'lifetime');
+  const plan = session.metadata?.plan || (session.mode === 'subscription' ? 'monthly' : 'single');
   const orderId = session.client_reference_id || session.metadata?.orderId || null;
 
-  if (email) {
+  // A single-draft purchase unlocks that one order only — it must not grant
+  // ongoing access the customer did not buy.
+  if (email && getPlan(plan).grantsMembership) {
     await activateMember(email, plan, {
       customerId: typeof session.customer === 'string' ? session.customer : session.customer?.id,
       subscriptionId: typeof session.subscription === 'string' ? session.subscription : session.subscription?.id
