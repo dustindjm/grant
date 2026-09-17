@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # The generated pages under public/ are committed. If a build changes
+      # them, the commit is out of date with build-guides.mjs.
+      - run: npm run build
+      - name: Generated files are up to date
+        run: git diff --exit-code -- public/

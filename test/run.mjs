@@ -7,6 +7,7 @@ process.env.STRIPE_SECRET_KEY = 'sk_test_123';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
 process.env.ADMIN_PASSWORD = 'hunter2hunter2';
 process.env.SITE_URL = 'https://grant3.netlify.app';
+process.env.RESEND_API_KEY = 'test-resend';
 
 const GEMINI_TEXT = Array.from({ length: 14 }, (_, i) => `Gemini preview sentence number ${i + 1} about the clinic and the funder.`).join(' ');
 const CLAUDE_TEXT = Array.from({ length: 40 }, (_, i) => `Claude full narrative sentence ${i + 1} covering need, fit, program and evidence.`).join(' ');

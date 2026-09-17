@@ -3,7 +3,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 
 const SITE = process.env.SITE_URL || 'https://grant3.netlify.app';
-const TODAY = new Date().toISOString().slice(0, 10);
+// Fixed, hand-bumped dates. Deriving these from `new Date()` made every build
+// non-deterministic: each deploy rewrote datePublished/dateModified/lastmod to
+// the build date, telling search engines the guides were rewritten daily and
+// leaving a dirty working tree after every local `npm run build`.
+// Bump UPDATED when you actually change guide content.
+const PUBLISHED = '2026-09-10';
+const UPDATED = '2026-09-10';
 
 // ---------------------------------------------------------------------------
 // Content. Each guide targets a real search intent a small nonprofit has, and
@@ -323,8 +329,8 @@ for (const g of GUIDES) {
   "@type":"Article",
   "headline":${JSON.stringify(g.title)},
   "description":${JSON.stringify(g.description)},
-  "datePublished":"${TODAY}",
-  "dateModified":"${TODAY}",
+  "datePublished":"${g.published || PUBLISHED}",
+  "dateModified":"${g.updated || UPDATED}",
   "mainEntityOfPage":{"@type":"WebPage","@id":"${canonical}"},
   "author":{"@type":"Organization","name":"Grantwright"},
   "publisher":{"@type":"Organization","name":"Grantwright"}
@@ -427,7 +433,7 @@ writeFileSync(
   `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
 ${urls
-  .map((u) => `  <url><loc>${u.loc}</loc><lastmod>${TODAY}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.priority}</priority></url>`)
+  .map((u) => `  <url><loc>${u.loc}</loc><lastmod>${UPDATED}</lastmod><changefreq>${u.freq}</changefreq><priority>${u.priority}</priority></url>`)
   .join('\n')}
 </urlset>
 `
