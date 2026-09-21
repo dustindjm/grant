@@ -21,6 +21,36 @@ export async function isMember(email) {
   return !!(await getMember(email));
 }
 
+// How much a logged-in session's membership can be trusted.
+//
+//   'verified' — the session provably belongs to the person who paid.
+//   'claimed'  — plausible, but an account was registered for this address
+//                after the membership existed, and nothing proved ownership
+//                of the address. That is what an account takeover looks
+//                like, and also what a genuine customer returning to sign
+//                up looks like; they are not distinguishable without email
+//                verification. Treated as the metered tier rather than
+//                refused, so a real customer is never locked out.
+//   null       — not a member.
+export async function membershipTrust(email) {
+  const member = await getMember(email);
+  if (!member) return null;
+  if (member.test) return 'verified';
+
+  const key = normalizeEmail(email);
+  const account = await getJSON(`account:${key}`);
+
+  // No account at all means the session was minted against a completed
+  // Stripe checkout, which is proof of purchase.
+  if (!account) return 'verified';
+  if (account.emailVerified) return 'verified';
+
+  // Registered before the membership existed, then paid: the ordinary path.
+  if ((account.createdAt || 0) <= (member.activatedAt || 0)) return 'verified';
+
+  return 'claimed';
+}
+
 export async function activateMember(email, plan, stripe = {}) {
   const key = normalizeEmail(email);
   if (!key) return null;

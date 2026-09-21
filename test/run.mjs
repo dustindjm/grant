@@ -354,6 +354,65 @@ console.log('\n10d. A paid order records whether its receipt was delivered');
   check('admin dashboard reports email is configured', stats.emailConfigured === true);
 }
 
+console.log('\n10e. Entitlement cannot be claimed by typing an email');
+{
+  const { activateMember, membershipTrust } = await import('../netlify/lib/members.mjs');
+  const { createSession } = await import('../netlify/lib/auth.mjs');
+  const signupFn = (await import('../netlify/functions/signup.mjs')).default;
+  const { unverifiedFullDailyLimit } = await import('../netlify/lib/orders.mjs');
+
+  const paid = 'director@realnonprofit.org';
+  await activateMember(paid, 'monthly', { customerId: 'cus_rnp', subscriptionId: 'sub_rnp' });
+
+  const gen = (body, cookie, ip) => generate(new Request('https://x/api/generate-draft', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-nf-client-connection-ip': ip, ...(cookie ? { cookie } : {}) },
+    body: JSON.stringify(body)
+  }));
+  const shot = async (email, cookie, ip) => {
+    const r = await gen({ ...intake, orgEmail: email, funderName: 'Claim Fund' }, cookie, ip);
+    return { status: r.status, body: await r.json() };
+  };
+
+  // A session minted against a completed checkout is proof of purchase.
+  const paidCookie = `gw_session=${await createSession(paid)}`;
+  check('a checkout session is verified', (await membershipTrust(paid)) === 'verified');
+
+  let unmetered = 0;
+  for (let i = 0; i < unverifiedFullDailyLimit() + 3; i++) {
+    const r = await shot(paid, paidCookie, '2.2.2.2');
+    if (r.body.unlocked) unmetered++;
+  }
+  check('a paying customer is never capped', unmetered === unverifiedFullDailyLimit() + 3, String(unmetered));
+
+  // Anonymous, just typing the customer's address into the form.
+  let free = 0;
+  let refused = 0;
+  let lastStatus = 0;
+  for (let i = 0; i < unverifiedFullDailyLimit() + 3; i++) {
+    const r = await shot(paid, null, '1.1.1.1');
+    lastStatus = r.status;
+    if (r.body.unlocked) free++; else refused++;
+  }
+  check('a typed-in address is capped, not unlimited', free === unverifiedFullDailyLimit(), String(free));
+  check('over the cap returns 429', refused === 3 && lastStatus === 429, `${refused}/${lastStatus}`);
+
+  // Registering an account for an address that already paid must not hand
+  // over the membership — nothing proved ownership of that address.
+  const takeover = await signupFn(new Request('https://x/api/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: paid, password: 'attacker-password' })
+  }));
+  const takeoverBody = await takeover.clone().json();
+  check('signup onto a paid address is flagged', takeoverBody.membershipPendingVerification === true);
+  check('and that session is not verified', (await membershipTrust(paid)) === 'claimed');
+
+  // An ordinary visitor is untouched by any of this.
+  const visitor = await shot('nobody@example.org', null, '4.4.4.4');
+  check('an ordinary visitor still gets a preview', visitor.body.preview === true && visitor.body.unlocked === false);
+}
+
 console.log('\n11. Stripe webhook signature');
 {
   const body = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_x' } } });

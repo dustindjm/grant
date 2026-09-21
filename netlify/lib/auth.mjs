@@ -48,6 +48,11 @@ export async function createAccount(email, password) {
   const existing = await getJSON(`account:${key}`);
   if (existing) return { ok: false, error: 'An account with this email already exists. Try logging in.' };
 
+  // Nothing here proves the person owns this address, so a fresh account
+  // must not silently inherit an entitlement someone else paid for. Mark it
+  // unverified; whether that matters is the caller's decision.
+  const paidEntitlement = !!(await getJSON(`member:${key}`));
+
   const salt = randomHex(16);
   const passwordHash = await hashPassword(password, salt);
   await setJSON(`account:${key}`, {
@@ -55,9 +60,10 @@ export async function createAccount(email, password) {
     salt,
     passwordHash,
     iterations: PBKDF2_ITERATIONS,
+    emailVerified: false,
     createdAt: Date.now()
   });
-  return { ok: true, email: key };
+  return { ok: true, email: key, claimsExistingMembership: paidEntitlement };
 }
 
 export async function verifyLogin(email, password) {

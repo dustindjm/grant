@@ -1,6 +1,6 @@
 import { json, readJson, clientIp } from '../lib/http.mjs';
 import { isValidEmail, normalizeEmail } from '../lib/store.mjs';
-import { isMember } from '../lib/members.mjs';
+import { isMember, membershipTrust } from '../lib/members.mjs';
 import { getSessionEmail } from '../lib/auth.mjs';
 import { getGrantPoints } from '../lib/grant-library.mjs';
 import { generatePreview, generateFull, truncateForPreview, MAX_RFP_CHARS } from '../lib/ai.mjs';
@@ -11,7 +11,10 @@ import {
   bumpEmailUsage,
   freePreviewLimit,
   checkIpQuota,
-  bumpIpQuota
+  bumpIpQuota,
+  checkUnverifiedFullQuota,
+  bumpUnverifiedFullQuota,
+  unverifiedFullDailyLimit
 } from '../lib/orders.mjs';
 
 const REQUEST_TYPES = new Set([
@@ -57,20 +60,55 @@ export default async (req) => {
   }
 
   try {
-    // A member is anyone whose contact email has paid, or who is logged into
-    // an account that has paid.
+    // Two ways to be a member, and they are not equally trustworthy.
+    //
+    // A session cookie is proof: it is issued at checkout, against a Stripe
+    // session id only the buyer can hold. That path stays unmetered.
+    //
+    // A contact email typed into this form proves nothing — it is a plain
+    // request field, and a paying organization's address is usually on its
+    // website. Honouring it is what keeps customers who paid before sessions
+    // existed working, so it stays, but it is metered per email per day and
+    // counts against the same per-IP cap as the free tier. That bounds what
+    // a known customer address is worth to someone who is not that customer.
     const sessionEmail = await getSessionEmail(req);
-    const member = (await isMember(input.orgEmail)) || (sessionEmail ? await isMember(sessionEmail) : false);
+    const trust = sessionEmail ? await membershipTrust(sessionEmail) : null;
+    const verifiedMember = trust === 'verified';
+    // A session whose ownership was never proved gets the same metered tier
+    // as a bare typed-in address, not the unmetered one.
+    const claimedMember = !verifiedMember && (trust === 'claimed' || (await isMember(input.orgEmail)));
+    const meteredEmail = trust === 'claimed' ? sessionEmail : input.orgEmail;
 
     let result;
     let previewText = null;
     let unlocked = false;
 
-    if (member) {
+    if (claimedMember) {
+      const ipQuota = await checkIpQuota(clientIp(req));
+      if (!ipQuota.allowed) {
+        return json({ error: 'Daily limit reached from this connection. Try again tomorrow.' }, 429);
+      }
+      const fullQuota = await checkUnverifiedFullQuota(meteredEmail);
+      if (!fullQuota.allowed) {
+        return json(
+          {
+            error: `That's ${unverifiedFullDailyLimit()} full drafts today for this email. Log in to continue without a daily cap, or try again tomorrow.`,
+            limitReached: true
+          },
+          429
+        );
+      }
+    }
+
+    if (verifiedMember || claimedMember) {
       // Paid path — Claude writes the full narrative.
       result = await generateFull(input);
       if (result.error) return json({ error: result.error }, 502);
       unlocked = true;
+      if (claimedMember) {
+        await bumpUnverifiedFullQuota(meteredEmail);
+        await bumpIpQuota(clientIp(req));
+      }
     } else {
       // Free path — check the quotas before spending an API call.
       const limit = freePreviewLimit();

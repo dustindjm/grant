@@ -33,6 +33,10 @@ export async function listOrders(limit = 300) {
   return orders.filter(Boolean).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 // --- Free preview metering -------------------------------------------------
 // Two independent caps: per email address, and per IP per day. Paid members
 // bypass both. This is what stops someone farming the free Gemini tier.
@@ -40,8 +44,36 @@ export async function listOrders(limit = 300) {
 const DEFAULT_EMAIL_LIMIT = Number(process.env.FREE_PREVIEW_LIMIT || 3);
 const DEFAULT_IP_DAILY_LIMIT = Number(process.env.FREE_PREVIEW_IP_DAILY_LIMIT || 15);
 
+// Full drafts cost real money on the Anthropic side, so the paid path is
+// metered too — generously enough that nobody writing grant applications for
+// a living will notice, tightly enough that a leaked entitlement cannot run
+// up an unbounded bill. Applied only when the membership was claimed by an
+// unverified email typed into the form; a session issued at checkout is
+// proof of purchase and stays unmetered.
+const DEFAULT_UNVERIFIED_FULL_DAILY = Number(process.env.UNVERIFIED_FULL_DAILY_LIMIT || 10);
+
 export function freePreviewLimit() {
   return DEFAULT_EMAIL_LIMIT;
+}
+
+export function unverifiedFullDailyLimit() {
+  return DEFAULT_UNVERIFIED_FULL_DAILY;
+}
+
+export async function checkUnverifiedFullQuota(email) {
+  const key = normalizeEmail(email);
+  if (!key) return { allowed: false, count: 0 };
+  const rec = await getJSON(`usage:full:${today()}:${key}`);
+  const count = rec?.count || 0;
+  return { allowed: count < DEFAULT_UNVERIFIED_FULL_DAILY, count };
+}
+
+export async function bumpUnverifiedFullQuota(email) {
+  const key = normalizeEmail(email);
+  if (!key) return;
+  const k = `usage:full:${today()}:${key}`;
+  const rec = await getJSON(k);
+  await setJSON(k, { count: (rec?.count || 0) + 1, updatedAt: Date.now() });
 }
 
 export async function getEmailUsage(email) {
@@ -57,10 +89,6 @@ export async function bumpEmailUsage(email) {
   const count = (await getEmailUsage(key)) + 1;
   await setJSON(`usage:email:${key}`, { count, updatedAt: Date.now() });
   return count;
-}
-
-function today() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 export async function checkIpQuota(ip) {
