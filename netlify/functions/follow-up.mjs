@@ -42,6 +42,7 @@ export default async () => {
   const now = Date.now();
   let scanned = 0;
   let sent = 0;
+  let skipped = 0;
 
   try {
     const orders = await listOrders(500);
@@ -65,9 +66,19 @@ export default async () => {
         html: body(order)
       });
 
-      // Mark it either way. A retry loop on a failing address helps nobody.
+      // A delivered or rejected send is final — retrying a bad address helps
+      // nobody. A *skip* is different: it means the server has no
+      // RESEND_API_KEY, which is our misconfiguration, not the recipient's
+      // problem. Marking those would burn each order's one-and-only nudge
+      // while no mail was ever sent, and the guard above would keep them
+      // burned forever once the key was finally added. So leave them unmarked.
+      if (result.skipped) {
+        skipped++;
+        continue;
+      }
+
       order.followUpSentAt = now;
-      order.followUpResult = result.sent ? 'sent' : result.skipped ? 'skipped' : 'failed';
+      order.followUpResult = result.sent ? 'sent' : 'failed';
       await saveOrder(order);
       if (result.sent) sent++;
     }
@@ -75,8 +86,11 @@ export default async () => {
     console.error('[follow-up] run failed:', err);
   }
 
-  console.log(`[follow-up] scanned ${scanned}, sent ${sent}`);
-  return new Response(JSON.stringify({ scanned, sent }), {
+  if (skipped) {
+    console.warn(`[follow-up] ${skipped} nudge(s) not sent: RESEND_API_KEY is not set. Nothing was marked as followed up.`);
+  }
+  console.log(`[follow-up] scanned ${scanned}, sent ${sent}, skipped ${skipped}`);
+  return new Response(JSON.stringify({ scanned, sent, skipped }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
   });

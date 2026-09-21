@@ -293,6 +293,24 @@ console.log('\n10c. Abandoned-preview follow-up');
 
   const gone = await getDraft(new Request('https://x/api/draft?id=does-not-exist'));
   check('unknown draft id is a 404', gone.status === 404);
+
+  // With no RESEND_API_KEY the send is skipped, not attempted. Skipping must
+  // not consume the order's one-and-only nudge, or the draft stays burned
+  // even after the key is configured.
+  const orphan = await (await generate(post('/api/generate-draft', { ...intake, orgEmail: 'nokey@example.org', funderName: 'No Key Fund' }))).json();
+  const agedOrphan = await getOrder(orphan.id);
+  agedOrphan.createdAt = Date.now() - 30 * 60 * 60 * 1000;
+  await saveOrder(agedOrphan);
+
+  const savedKey = process.env.RESEND_API_KEY;
+  delete process.env.RESEND_API_KEY;
+  run = await (await followUp()).json();
+  check('reports the skip instead of sending', run.sent === 0 && run.skipped === 1, JSON.stringify(run));
+  check('does not mark a skipped order as followed up', !(await getOrder(orphan.id)).followUpSentAt);
+
+  process.env.RESEND_API_KEY = savedKey;
+  run = await (await followUp()).json();
+  check('once the key is set, the nudge still goes out', run.sent === 1, JSON.stringify(run));
 }
 
 console.log('\n11. Stripe webhook signature');
