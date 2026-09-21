@@ -81,9 +81,9 @@ Site configuration → Environment variables.
 | `SUPPORT_EMAIL` | `dustindjm@outlook.com` | Reply-to shown in emails. |
 | `FREE_PREVIEW_LIMIT` | `3` | Free previews per email address. |
 | `FREE_PREVIEW_IP_DAILY_LIMIT` | `15` | Free previews per IP per day. |
-| `RESEND_API_KEY` | — | **Sends the abandoned-preview follow-up and the receipt email. This is the highest-ROI variable on the list — without it the recovery email silently does nothing.** resend.com |
+| `RESEND_API_KEY` | — | **Sends the abandoned-preview follow-up, the paid receipt and the sale alert. Without it none of them go out — a customer can pay and receive no email at all. The admin dashboard shows a warning banner while this is unset, and flags any paid order whose receipt never reached the customer.** resend.com |
 | `EMAIL_FROM` | Resend sandbox | e.g. `Grantwright <hello@yourdomain.com>` |
-| `ADMIN_EMAIL` | — | You get an email on every new member. |
+| `ADMIN_EMAIL` | `SUPPORT_EMAIL`, then `dustindjm@outlook.com` | You get an email on every new sale. Only actually sends once `RESEND_API_KEY` is set. |
 | `GEMINI_MODEL` | `gemini-2.5-flash` | Falls back to `gemini-2.0-flash` automatically. |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5` | |
 | `TEST_UNLOCK_EMAIL` | — | Treat this one email as a paying member, for testing the paid path without a card. |

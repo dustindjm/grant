@@ -69,19 +69,53 @@ export async function fulfillCheckout(session) {
 }
 
 async function notify(order, email, plan) {
-  const adminEmail = process.env.ADMIN_EMAIL;
+  // One less variable to forget: sale alerts go to ADMIN_EMAIL, or to the
+  // same support address follow-up.mjs already falls back to, so a new sale
+  // reaches someone without any extra configuration.
+  const adminEmail = process.env.ADMIN_EMAIL || process.env.SUPPORT_EMAIL || 'dustindjm@outlook.com';
   if (adminEmail) {
-    await sendEmail({
+    const alert = await sendEmail({
       to: adminEmail,
       subject: `New ${plan} member — ${order?.orgName || email}`,
       html: `<p><strong>${escapeHtml(order?.orgName || 'Unknown org')}</strong> (${escapeHtml(email || 'no email')}) joined on the <strong>${escapeHtml(plan)}</strong> plan.</p>`
     });
+    if (!alert.sent) {
+      console.error(`[fulfill] sale alert for ${order?.id || 'unknown order'} not delivered (${outcome(alert)}).`);
+    }
   }
-  if (email && order?.draft) {
-    await sendEmail({
-      to: email,
-      subject: 'Your Grantwright draft is unlocked',
-      html: draftEmailHtml(order)
-    });
+
+  if (!order) return;
+
+  if (!email) {
+    order.receiptEmail = 'no-address';
+    console.error(`[fulfill] order ${order.id} was paid but carries no email address — no receipt could be sent.`);
+    await saveOrder(order);
+    return;
   }
+  if (!order.draft) return;
+
+  // Someone just paid. If the receipt does not go out, that has to be visible
+  // — in the logs and on the admin dashboard — not swallowed. A missing
+  // RESEND_API_KEY is the usual cause and looks identical to success here
+  // unless the result is actually inspected.
+  const receipt = await sendEmail({
+    to: email,
+    subject: 'Your Grantwright draft is unlocked',
+    html: draftEmailHtml(order)
+  });
+
+  order.receiptEmail = outcome(receipt);
+  order.receiptEmailAt = Date.now();
+  await saveOrder(order);
+
+  if (!receipt.sent) {
+    console.error(
+      `[fulfill] PAID order ${order.id} (${email}) got no receipt: ${order.receiptEmail}. ` +
+        (receipt.skipped ? 'RESEND_API_KEY is not set on this site.' : 'The send failed.')
+    );
+  }
+}
+
+function outcome(result) {
+  return result.sent ? 'sent' : result.skipped ? 'skipped' : 'failed';
 }

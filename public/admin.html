@@ -33,6 +33,7 @@
   .pill.paid{background:#DCEBDD;color:var(--forest);}
   .pill.pending{background:var(--bg);color:var(--muted);border:1px solid var(--border);}
   .pill.err{background:#F7E4E0;color:var(--stamp);}
+  .banner-warn{background:#F7E4E0;color:var(--stamp);border:1px solid #E7C9C2;border-radius:8px;padding:10px 14px;margin:0 0 14px;font-size:13px;line-height:1.45;}
   #detail{display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-top:20px;}
   #detail h3{font-family:'Source Serif 4',serif;font-size:18px;margin:0 0 4px;}
   #detail .meta{font-size:12.5px;color:var(--muted);margin-bottom:14px;}
@@ -56,6 +57,7 @@
     <button id="refreshBtn">Refresh</button>
     <button id="exportBtn">Export CSV</button>
   </div>
+  <div id="emailWarning"></div>
   <div class="summary-row" id="summaryRow"></div>
 
   <h2>Drafts</h2>
@@ -119,6 +121,15 @@
       <div class="summary-card"><div class="num">${s.lifetimeMembers ?? 0}</div><div class="label">Lifetime</div></div>
       <div class="summary-card"><div class="num">${esc(s.mrr ?? '$0')}</div><div class="label">Est. MRR</div></div>`;
 
+    // A paying customer who never got their draft emailed is the one problem
+    // here that costs money and never shows up in the orders table.
+    const emailWarning = s.emailConfigured === false
+      ? 'Email is switched off: RESEND_API_KEY is not set, so no receipts, draft deliveries or follow-ups are being sent.'
+      : s.receiptsUndelivered
+        ? `${s.receiptsUndelivered} paid order(s) never received a receipt email.`
+        : '';
+    $('emailWarning').innerHTML = emailWarning ? `<div class="banner-warn">${esc(emailWarning)}</div>` : '';
+
     $('ordersBody').innerHTML = '';
     (DATA.orders || []).forEach((o) => {
       const tr = document.createElement('tr');
@@ -126,7 +137,9 @@
       tr.onclick = () => showDetail(o.id);
       const status = o.upgradeError
         ? '<span class="pill err">Upgrade failed</span>'
-        : `<span class="pill ${o.unlocked ? 'paid' : 'pending'}">${o.unlocked ? 'Full' : 'Preview'}</span>`;
+        : o.paidAt && o.receiptEmail && o.receiptEmail !== 'sent'
+          ? '<span class="pill err">No receipt sent</span>'
+          : `<span class="pill ${o.unlocked ? 'paid' : 'pending'}">${o.unlocked ? 'Full' : 'Preview'}</span>`;
       tr.innerHTML = `<td>${esc(o.orgName)}<br><span style="color:#6B7268;font-size:11.5px;">${esc(o.orgEmail)}</span></td>
         <td>${esc(o.funderName)}</td><td style="font-family:'IBM Plex Mono',monospace;font-size:11px;">${esc(o.engine || '')}</td>
         <td>${status}</td><td>${new Date(o.createdAt).toLocaleString()}</td>`;

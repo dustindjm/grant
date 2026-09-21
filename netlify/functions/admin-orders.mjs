@@ -40,7 +40,8 @@ export default async (req) => {
         paidAt: o.paidAt || null,
         deadline: o.deadline || '',
         draft: o.draft,
-        upgradeError: o.upgradeError || null
+        upgradeError: o.upgradeError || null,
+        receiptEmail: o.receiptEmail || null
       })),
       members: active.map((m) => ({ email: m.email, plan: m.plan, activatedAt: m.activatedAt })),
       stats: {
@@ -48,7 +49,12 @@ export default async (req) => {
         paidDrafts: orders.filter((o) => o.unlocked).length,
         activeMembers: active.length,
         lifetimeMembers: active.filter((m) => m.plan === 'lifetime').length,
-        mrr: formatPrice(mrrCents)
+        mrr: formatPrice(mrrCents),
+        // Paid orders whose receipt never reached the customer. Anything
+        // above zero means email is misconfigured, not that a customer
+        // mistyped an address.
+        receiptsUndelivered: orders.filter((o) => o.paidAt && o.receiptEmail && o.receiptEmail !== 'sent').length,
+        emailConfigured: !!process.env.RESEND_API_KEY
       }
     });
   } catch (err) {

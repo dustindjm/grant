@@ -313,6 +313,47 @@ console.log('\n10c. Abandoned-preview follow-up');
   check('once the key is set, the nudge still goes out', run.sent === 1, JSON.stringify(run));
 }
 
+console.log('\n10d. A paid order records whether its receipt was delivered');
+{
+  const { getOrder } = await import('../netlify/lib/orders.mjs');
+  const { fulfillCheckout } = await import('../netlify/lib/fulfill.mjs');
+
+  const made = await (await generate(post('/api/generate-draft', { ...intake, orgEmail: 'receipt@example.org', funderName: 'Receipt Fund' }))).json();
+  await fulfillCheckout({
+    id: 'cs_receipt_1',
+    payment_status: 'paid',
+    mode: 'payment',
+    client_reference_id: made.id,
+    customer_details: { email: 'receipt@example.org' },
+    metadata: { orderId: made.id, plan: 'single', orgEmail: 'receipt@example.org' }
+  });
+  check('receipt delivery is recorded on the order', (await getOrder(made.id)).receiptEmail === 'sent');
+
+  // Same purchase with email switched off: the order must carry the failure
+  // rather than look identical to a delivered one.
+  const dark = await (await generate(post('/api/generate-draft', { ...intake, orgEmail: 'dark@example.org', funderName: 'Dark Fund' }))).json();
+  const savedKey = process.env.RESEND_API_KEY;
+  delete process.env.RESEND_API_KEY;
+  await fulfillCheckout({
+    id: 'cs_receipt_2',
+    payment_status: 'paid',
+    mode: 'payment',
+    client_reference_id: dark.id,
+    customer_details: { email: 'dark@example.org' },
+    metadata: { orderId: dark.id, plan: 'single', orgEmail: 'dark@example.org' }
+  });
+  process.env.RESEND_API_KEY = savedKey;
+
+  const darkOrder = await getOrder(dark.id);
+  check('an undelivered receipt is flagged, not silent', darkOrder.receiptEmail === 'skipped');
+  check('the customer still got what they paid for', darkOrder.unlocked === true && darkOrder.engine.startsWith('claude'));
+
+  const dash = await adminOrders(new Request('https://x/api/admin-orders', { headers: { 'x-admin-password': 'hunter2hunter2' } }));
+  const stats = (await dash.json()).stats;
+  check('admin dashboard counts undelivered receipts', stats.receiptsUndelivered >= 1, JSON.stringify(stats.receiptsUndelivered));
+  check('admin dashboard reports email is configured', stats.emailConfigured === true);
+}
+
 console.log('\n11. Stripe webhook signature');
 {
   const body = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_x' } } });
