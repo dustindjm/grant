@@ -68,6 +68,29 @@ export async function checkUnverifiedFullQuota(email) {
   return { allowed: count < DEFAULT_UNVERIFIED_FULL_DAILY, count };
 }
 
+// Rewrites re-run Claude only when a previous attempt failed, so a healthy
+// order costs nothing to re-request. A stuck one can be retried, but not
+// indefinitely by anyone holding the id.
+const DEFAULT_REWRITE_DAILY = Number(process.env.REWRITE_DAILY_LIMIT || 5);
+
+export function rewriteDailyLimit() {
+  return DEFAULT_REWRITE_DAILY;
+}
+
+export async function checkRewriteQuota(orderId) {
+  if (!orderId) return { allowed: false, count: 0 };
+  const rec = await getJSON(`usage:rewrite:${today()}:${orderId}`);
+  const count = rec?.count || 0;
+  return { allowed: count < DEFAULT_REWRITE_DAILY, count };
+}
+
+export async function bumpRewriteQuota(orderId) {
+  if (!orderId) return;
+  const k = `usage:rewrite:${today()}:${orderId}`;
+  const rec = await getJSON(k);
+  await setJSON(k, { count: (rec?.count || 0) + 1, updatedAt: Date.now() });
+}
+
 export async function bumpUnverifiedFullQuota(email) {
   const key = normalizeEmail(email);
   if (!key) return;

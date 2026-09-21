@@ -413,6 +413,59 @@ console.log('\n10e. Entitlement cannot be claimed by typing an email');
   check('an ordinary visitor still gets a preview', visitor.body.preview === true && visitor.body.unlocked === false);
 }
 
+console.log('\n10f. No paying customer is ever locked out');
+{
+  const { activateMember, deactivateMember, membershipTrust } = await import('../netlify/lib/members.mjs');
+  const { createAccount, createSession } = await import('../netlify/lib/auth.mjs');
+  const meFn = (await import('../netlify/functions/me.mjs')).default;
+  const { unverifiedFullDailyLimit } = await import('../netlify/lib/orders.mjs');
+
+  const shot = async (email, cookie, ip) => {
+    const r = await generate(new Request('https://x/api/generate-draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-nf-client-connection-ip': ip, ...(cookie ? { cookie } : {}) },
+      body: JSON.stringify({ ...intake, orgEmail: email, funderName: `Fund ${Math.random()}` })
+    }));
+    return { status: r.status, body: await r.json() };
+  };
+
+  // Registered first, then paid: the ordinary funnel, and it must stay unmetered.
+  await createAccount('early@org.org', 'password123');
+  await new Promise((r) => setTimeout(r, 5));
+  await activateMember('early@org.org', 'monthly', { customerId: 'c_early', subscriptionId: 's_early' });
+  check('signing up before paying stays verified', (await membershipTrust('early@org.org')) === 'verified');
+
+  // Paid, but the browser never made it back from Stripe, so no session was
+  // ever minted. Typing the address must still work, just capped.
+  await activateMember('webhook@org.org', 'monthly', { customerId: 'c_wh', subscriptionId: 's_wh' });
+  let got = 0;
+  for (let i = 0; i < unverifiedFullDailyLimit() + 3; i++) {
+    const r = await shot('webhook@org.org', null, '8.8.8.8');
+    if (r.body.unlocked) got++;
+  }
+  check('a webhook-only customer still gets full drafts', got === unverifiedFullDailyLimit(), String(got));
+
+  // Returning after the session lapsed: downgraded to metered, never refused.
+  await activateMember('lapsed@org.org', 'monthly', { customerId: 'c_lap', subscriptionId: 's_lap' });
+  await new Promise((r) => setTimeout(r, 5));
+  await createAccount('lapsed@org.org', 'password123');
+  const lapsedCookie = `gw_session=${await createSession('lapsed@org.org')}`;
+  check('a lapsed customer is claimed, not refused', (await membershipTrust('lapsed@org.org')) === 'claimed');
+  const lapsed = await shot('lapsed@org.org', lapsedCookie, '9.9.9.9');
+  check('and still receives a full draft', lapsed.body.unlocked === true && lapsed.body.engine === 'claude');
+
+  const meBody = await (await meFn(new Request('https://x/api/me', { headers: { cookie: lapsedCookie } }))).json();
+  check('the UI is told it is capped', meBody.member === true && meBody.verified === false);
+  check('and by how much', meBody.fullDraftsRemaining === unverifiedFullDailyLimit() - 1, String(meBody.fullDraftsRemaining));
+
+  // Cancelling still revokes.
+  const earlyCookie = `gw_session=${await createSession('early@org.org')}`;
+  await deactivateMember('early@org.org', 'canceled');
+  check('a cancelled subscriber loses membership', (await membershipTrust('early@org.org')) === null);
+  const cancelled = await shot('early@org.org', earlyCookie, '6.6.6.6');
+  check('and drops back to previews', cancelled.body.preview === true && cancelled.body.unlocked === false);
+}
+
 console.log('\n11. Stripe webhook signature');
 {
   const body = JSON.stringify({ type: 'checkout.session.completed', data: { object: { id: 'cs_x' } } });

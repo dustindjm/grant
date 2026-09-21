@@ -427,7 +427,15 @@ function applySession(data) {
   $('loggedInCard').hidden = !state.user;
   if (state.user) {
     $('loggedInEmail').textContent = state.user;
-    $('planValue').textContent = state.member ? `Full access${state.plan ? ` (${state.plan})` : ''}` : 'Previews only';
+    // A membership we cannot prove belongs to this session still works, but
+    // it is capped per day. Show the cap instead of promising full access
+    // and then refusing partway through.
+    const capped = state.member && data.verified === false && typeof data.fullDraftsRemaining === 'number';
+    $('planValue').textContent = state.member
+      ? capped
+        ? `Full access — ${data.fullDraftsRemaining} of ${data.fullDraftDailyLimit} drafts left today`
+        : `Full access${state.plan ? ` (${state.plan})` : ''}`
+      : 'Previews only';
     $('billingBtn').hidden = !(state.member && state.plan === 'monthly');
     if (!$('orgEmail').value) $('orgEmail').value = state.user;
   }
